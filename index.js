@@ -1,5 +1,4 @@
 const express = require("express");
-const app = express();
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
@@ -7,23 +6,28 @@ const path = require("path");
 const cors = require("cors");
 require('dotenv').config();
 
-// Environment variables
+const app = express();
 const port = process.env.PORT || 4000;
-const dbUri = process.env.DB_URI;
+const dbUri = process.env.DB_URI || 'mongodb://localhost:27017/e-commerce';
 
 // Middleware
 app.use(express.json());
 app.use(cors());
 
-// Connect to MongoDB
+// MongoDB connection
 mongoose.connect(dbUri, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-}).then(() => {
-    console.log("Successfully connected to MongoDB");
-}).catch((err) => {
-    console.error("Error connecting to MongoDB:", err.message);
-    process.exit(1); // Exit process if unable to connect
+})
+    .then(() => console.log("Connected to MongoDB"))
+    .catch((err) => {
+        console.error("Error connecting to MongoDB:", err.message);
+        process.exit(1);
+    });
+
+// Home route
+app.get("/", (req, res) => {
+    res.send("Express app is running");
 });
 
 // Image storage engine
@@ -33,29 +37,22 @@ const storage = multer.diskStorage({
         cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`);
     }
 });
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
 // Serve images statically
 app.use('/images', express.static('upload/images'));
 
-// API routes
-
-// Home route
-app.get("/", (req, res) => {
-    res.send("Express app is running");
-});
-
-// Upload image route
+// Upload image endpoint
 app.post("/upload", upload.single('product'), (req, res) => {
     res.json({
         success: 1,
-        image_url: `http://localhost:${port}/images/${req.file.filename}`
+        image_url: `http://localhost:${port}/images/${req.file.filename}`,
     });
 });
 
 // Mongoose Schemas
 
-// Product schema
+// Product Schema
 const ProductSchema = new mongoose.Schema({
     id: {
         type: Number,
@@ -92,19 +89,19 @@ const ProductSchema = new mongoose.Schema({
 });
 const Product = mongoose.model("Product", ProductSchema);
 
-// Add product route
+// Add product endpoint
 app.post('/addproduct', async (req, res) => {
     try {
-        let products = await Product.find({});
-        let id = products.length > 0 ? products[products.length - 1].id + 1 : 1;
+        const products = await Product.find({});
+        const id = products.length > 0 ? products[products.length - 1].id + 1 : 1;
 
         const product = new Product({
-            id: id,
+            id,
             name: req.body.name,
             image: req.body.image,
             category: req.body.category,
             new_price: req.body.new_price,
-            old_price: req.body.old_price
+            old_price: req.body.old_price,
         });
 
         await product.save();
@@ -115,7 +112,7 @@ app.post('/addproduct', async (req, res) => {
     }
 });
 
-// Remove product route
+// Remove product endpoint
 app.post('/removeproduct', async (req, res) => {
     try {
         await Product.findOneAndDelete({ id: req.body.id });
@@ -126,10 +123,10 @@ app.post('/removeproduct', async (req, res) => {
     }
 });
 
-// Get all products route
+// Get all products endpoint
 app.get('/allproducts', async (req, res) => {
     try {
-        let products = await Product.find({});
+        const products = await Product.find({});
         res.json(products);
     } catch (error) {
         console.error("Error fetching products:", error.message);
@@ -137,7 +134,7 @@ app.get('/allproducts', async (req, res) => {
     }
 });
 
-// User schema
+// User Schema
 const UserSchema = new mongoose.Schema({
     name: {
         type: String,
@@ -163,12 +160,12 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.model('User', UserSchema);
 
-// Signup route
+// Signup endpoint
 app.post('/signup', async (req, res) => {
     try {
-        let check = await User.findOne({ email: req.body.email });
-        if (check) {
-            return res.status(400).json({ success: false, errors: "Existing user found with email address" });
+        const existingUser = await User.findOne({ email: req.body.email });
+        if (existingUser) {
+            return res.status(400).json({ success: false, errors: "User with this email already exists" });
         }
 
         let cart = new Map();
@@ -179,13 +176,13 @@ app.post('/signup', async (req, res) => {
         const user = new User({
             name: req.body.username,
             email: req.body.email,
-            password: req.body.password, // Note: Consider hashing the password
+            password: req.body.password, // Consider hashing the password with bcrypt
             cartData: cart,
         });
 
         await user.save();
 
-        const token = jwt.sign({ id: user.id }, 'secret_ecom');
+        const token = jwt.sign({ id: user.id }, 'secret_ecom', { expiresIn: '1h' });
         res.json({ success: true, token });
     } catch (error) {
         console.error("Error during signup:", error.message);
@@ -193,21 +190,21 @@ app.post('/signup', async (req, res) => {
     }
 });
 
-// Login route
+// Login endpoint
 app.post('/login', async (req, res) => {
     try {
-        let user = await User.findOne({ email: req.body.email });
-        if (user) {
-            const passCompare = req.body.password === user.password; // Note: Consider using bcrypt for password comparison
-            if (passCompare) {
-                const token = jwt.sign({ id: user.id }, 'secret_ecom');
-                res.json({ success: true, token });
-            } else {
-                res.status(400).json({ success: false, errors: "Wrong Password" });
-            }
-        } else {
-            res.status(400).json({ success: false, errors: "Wrong Email id" });
+        const user = await User.findOne({ email: req.body.email });
+        if (!user) {
+            return res.status(400).json({ success: false, errors: "Invalid email or password" });
         }
+
+        const passCompare = req.body.password === user.password; // Consider using bcrypt to compare hashed passwords
+        if (!passCompare) {
+            return res.status(400).json({ success: false, errors: "Invalid email or password" });
+        }
+
+        const token = jwt.sign({ id: user.id }, 'secret_ecom', { expiresIn: '1h' });
+        res.json({ success: true, token });
     } catch (error) {
         console.error("Error during login:", error.message);
         res.status(500).json({ success: false, errors: "Internal Server Error" });
@@ -229,12 +226,12 @@ const fetchUser = (req, res, next) => {
     }
 };
 
-// Add to cart route
+// Add to cart endpoint
 app.post('/addtocart', fetchUser, async (req, res) => {
     try {
-        let userData = await User.findById(req.user.id);
-        userData.cartData.set(req.body.itemId, (userData.cartData.get(req.body.itemId) || 0) + 1);
-        await userData.save();
+        let user = await User.findById(req.user.id);
+        user.cartData.set(req.body.itemId, (user.cartData.get(req.body.itemId) || 0) + 1);
+        await user.save();
         res.send("Added");
     } catch (error) {
         console.error("Error adding to cart:", error.message);
@@ -242,14 +239,14 @@ app.post('/addtocart', fetchUser, async (req, res) => {
     }
 });
 
-// Remove from cart route
+// Remove from cart endpoint
 app.post('/removefromcart', fetchUser, async (req, res) => {
     try {
-        let userData = await User.findById(req.user.id);
-        let currentQuantity = userData.cartData.get(req.body.itemId);
+        let user = await User.findById(req.user.id);
+        let currentQuantity = user.cartData.get(req.body.itemId);
         if (currentQuantity > 0) {
-            userData.cartData.set(req.body.itemId, currentQuantity - 1);
-            await userData.save();
+            user.cartData.set(req.body.itemId, currentQuantity - 1);
+            await user.save();
             res.send("Removed");
         } else {
             res.status(400).json({ success: false, errors: "Item not in cart" });
@@ -260,23 +257,46 @@ app.post('/removefromcart', fetchUser, async (req, res) => {
     }
 });
 
-// Get cart data route
+// Get cart data endpoint
 app.post('/getcart', fetchUser, async (req, res) => {
     try {
-        let userData = await User.findById(req.user.id);
-        res.json(userData.cartData);
+        const user = await User.findById(req.user.id);
+        res.json(user.cartData);
     } catch (error) {
         console.error("Error fetching cart data:", error.message);
         res.status(500).json({ success: false, errors: "Internal Server Error" });
     }
 });
 
-// Order schema
+// New Collection endpoint
+app.get('/newcollection', async (req, res) => {
+    try {
+        const products = await Product.find({});
+        const newCollection = products.slice(-8); // Get the last 8 products
+        res.json(newCollection);
+    } catch (error) {
+        console.error("Error fetching new collection:", error.message);
+        res.status(500).json({ success: false, errors: "Internal Server Error" });
+    }
+});
+
+// Popular in Women endpoint
+app.get('/popularinwomen', async (req, res) => {
+    try {
+        const popularInWomen = await Product.find({ category: "women" }).limit(4); // Get first 4 products in "women" category
+        res.json(popularInWomen);
+    } catch (error) {
+        console.error("Error fetching popular in women:", error.message);
+        res.status(500).json({ success: false, errors: "Internal Server Error" });
+    }
+});
+
+// Order Schema
 const OrderSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: true,
     },
     products: [{
         id: { type: Number, required: true },
@@ -294,24 +314,22 @@ const OrderSchema = new mongoose.Schema({
         state: { type: String, required: true },
         zipCode: { type: String, required: true },
         country: { type: String, required: true },
-        phone: { type: String, required: true }
+        phone: { type: String, required: true },
     },
     totalAmount: { type: Number, required: true },
     date: { type: Date, default: Date.now },
-    status: { type: String, default: "Processing" }
+    status: { type: String, default: "Processing" },
 });
 const Order = mongoose.model('Order', OrderSchema);
 
-// Place order route
+// Place order endpoint
 app.post('/placeorder', fetchUser, async (req, res) => {
-    const { products, totalAmount, deliveryInfo } = req.body;
-
     try {
         const newOrder = new Order({
             userId: req.user.id,
-            products,
-            deliveryInfo,
-            totalAmount
+            products: req.body.products,
+            deliveryInfo: req.body.deliveryInfo,
+            totalAmount: req.body.totalAmount,
         });
 
         await newOrder.save();
@@ -322,7 +340,7 @@ app.post('/placeorder', fetchUser, async (req, res) => {
     }
 });
 
-// Get my orders route
+// Get my orders endpoint
 app.get('/myorders', fetchUser, async (req, res) => {
     try {
         const orders = await Order.find({ userId: req.user.id }).sort({ date: -1 });
@@ -333,7 +351,7 @@ app.get('/myorders', fetchUser, async (req, res) => {
     }
 });
 
-// Get all orders route
+// Get all orders endpoint
 app.get('/api/orders', async (req, res) => {
     try {
         const orders = await Order.find().populate('userId', 'name email');
@@ -344,14 +362,12 @@ app.get('/api/orders', async (req, res) => {
     }
 });
 
-// Update order status route
+// Update order status endpoint
 app.post('/updateOrderStatus', async (req, res) => {
-    const { orderId, newStatus } = req.body;
-
     try {
-        const order = await Order.findByIdAndUpdate(orderId, { status: newStatus }, { new: true });
+        const order = await Order.findByIdAndUpdate(req.body.orderId, { status: req.body.newStatus }, { new: true });
         if (!order) {
-            return res.status(404).json({ success: false, errors: "Order not found" });
+            return res.status(404).json({ success: false, errors: 'Order not found' });
         }
         res.json({ success: true, order });
     } catch (error) {
@@ -360,7 +376,7 @@ app.post('/updateOrderStatus', async (req, res) => {
     }
 });
 
-// Start server
+// Start the server
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 });
