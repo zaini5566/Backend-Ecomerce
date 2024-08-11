@@ -8,7 +8,7 @@ require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 4000;
-const dbUri = process.env.DB_URI || 'mongodb://localhost:27017/e-commerce';
+const dbUri = process.env.DB_URI ;
 
 // Middleware
 app.use(express.json());
