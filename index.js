@@ -46,11 +46,11 @@ app.use('/images', express.static('upload/images'));
 app.post("/upload", upload.single('product'), (req, res) => {
     res.json({
         success: 1,
-        image_url: `http://localhost:${port}/images/${req.file.filename}`,
+        image_url: `https://backend-ecomerce-3zhr.onrender.com/images/${req.file.filename}`,
     });
 });
 
-// Mongoose Schemas
+
 
 // Product Schema
 const ProductSchema = new mongoose.Schema({
