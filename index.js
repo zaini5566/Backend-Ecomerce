@@ -2,13 +2,15 @@ const express = require("express");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
-const path = require("path");
 const cors = require("cors");
+const path = require("path");
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 4000;
-const dbUri = process.env.DB_URI ;
+const dbUri = process.env.DB_URI;
 
 // Middleware
 app.use(express.json());
@@ -25,32 +27,37 @@ mongoose.connect(dbUri, {
         process.exit(1);
     });
 
+// Cloudinary configuration
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Cloudinary storage engine
+const storage = new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+        folder: 'products', // Folder name in Cloudinary
+        format: async (req, file) => 'png', // Format of the uploaded files
+        public_id: (req, file) => file.fieldname + '_' + Date.now(),
+    },
+});
+
+const upload = multer({ storage: storage });
+
 // Home route
 app.get("/", (req, res) => {
     res.send("Express app is running");
 });
 
-// Image storage engine
-const storage = multer.diskStorage({
-    destination: './upload/images',
-    filename: (req, file, cb) => {
-        cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`);
-    }
-});
-const upload = multer({ storage });
-
-// Serve images statically
-app.use('/images', express.static('upload/images'));
-
 // Upload image endpoint
 app.post("/upload", upload.single('product'), (req, res) => {
     res.json({
         success: 1,
-        image_url: `https://backend-ecomerce-3zhr.onrender.com/images/${req.file.filename}`,
+        image_url: req.file.path, // Cloudinary URL
     });
 });
-
-
 
 // Product Schema
 const ProductSchema = new mongoose.Schema({
