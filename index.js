@@ -168,35 +168,32 @@ const UserSchema = new mongoose.Schema({
 const User = mongoose.model('User', UserSchema);
 
 // Signup endpoint
-app.post('/signup', async (req, res) => {
-    try {
-        const existingUser = await User.findOne({ email: req.body.email });
-        if (existingUser) {
-            return res.status(400).json({ success: false, errors: "User with this email already exists" });
-        }
-
-        let cart = new Map();
-        for (let i = 0; i < 300; i++) {
-            cart.set(i, 0);
-        }
-
-        const user = new User({
-            name: req.body.username,
-            email: req.body.email,
-            password: req.body.password, // Consider hashing the password with bcrypt
-            cartData: cart,
-        });
-
-        await user.save();
-
-        const token = jwt.sign({ id: user.id }, 'secret_ecom', { expiresIn: '1h' });
-        res.json({ success: true, token });
-    } catch (error) {
-        console.error("Error during signup:", error.message);
-        res.status(500).json({ success: false, errors: "Internal Server Error" });
+app.post('/signup', async(req,res) => {
+    let check = await User.findOne({email:req.body.email}); 
+    if (check){
+        return res.status(400).json({success:false, errors: "esisting user found wiht email adress "})
     }
-});
+    let cart = {}; 
+    for (let i = 0; i<300; i++) {
+        cart[i]=0; 
+    }
+    const user = new User({   
+        name:req.body.username,
+        email:req.body.email, 
+        password:req.body.password, 
+        cartData:cart,
+    })
+    await user.save(); 
 
+
+    const data = {
+        user: {
+            id: user.id
+        }
+    }
+    const token = jwt.sign(data, 'secret_ecom'); 
+    res.json({success:true, token})
+})
 // Login endpoint
 app.post('/login', async (req, res) => {
     try {
